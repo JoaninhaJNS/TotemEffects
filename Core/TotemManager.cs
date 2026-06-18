@@ -17,10 +17,6 @@ public class TotemManager(Extension ext)
     private int SantoriniBottomClassId { get; set; } = -1;
     private int WiredRepeatClassId { get; set; } = -1;
     private int WiredVariableClassId { get; set; } = -1;
-
-    private string CurrentCenterState { get; set; } = "-1";
-    private string CurrentBottomState { get; set; } = "-1";
-
     private FloorItem? WiredRepeatItem { get; set; } = null;
     private FloorItem? WiredVariableItem { get; set; } = null;
 
@@ -96,14 +92,8 @@ public class TotemManager(Extension ext)
         var item = msg.Item;
 
         int headId = IsSantorini ? SantoriniHeadClassId : JungleHeadClassId;
-        int centerId = IsSantorini ? SantoriniCenterClassId : JungleCenterClassId;
-        int bottomId = IsSantorini ? SantoriniBottomClassId : JungleBottomClassId;
 
-        if (item.Kind == bottomId)
-            CurrentBottomState = item.Data.Value;
-        else if (item.Kind == centerId)
-            CurrentCenterState = item.Data.Value;
-        else if (item.Kind == headId)
+        if (item.Kind == headId)
             ReceivedObjectsData.TrySetResult(true);
         else if (item.Kind == WiredRepeatClassId)
             WiredRepeatItem = item;
@@ -129,19 +119,6 @@ public class TotemManager(Extension ext)
         CenterItem = null;
         BottomItem = null;
         ReceivedObjectsData = new();
-        CurrentCenterState = "-1";
-        CurrentBottomState = "-1";
-    }
-
-    private async Task CycleToState(IInventoryItem item, string currentState, int targetState, int maxStates)
-    {
-        if (!int.TryParse(currentState, out int current)) return;
-        int steps = (targetState - current + maxStates) % maxStates;
-        for (int i = 0; i < steps; i++)
-        {
-            _ext.Send(Out.UseFurniture, item.Id, 0);
-            await Task.Delay(100);
-        }
     }
 
     private async Task<(ICatalogPage Page, ICatalogOffer Offer)?> FindCatalogOffer(ICatalog catalog, string pageName, string furniLine)
@@ -249,8 +226,11 @@ public class TotemManager(Extension ext)
         if (WiredVariableItem != null)
             _ext.Send(Out.UpdateAction, WiredVariableItem.Id, 6, 0, 0, 0, 0, combo.Head, -10, "", 1, HeadItem.Id, 0, 2, 100, 200, 2, 0, 200, 2, "-110", "n", 0);
 
-        await CycleToState(BottomItem, CurrentBottomState, combo.Bottom, 12);
-        await CycleToState(CenterItem, CurrentCenterState, combo.Center, 3);
+        // set state
+        _ext.Send(Out.WiredSetObjectVariableValue, 0, BottomItem.Id, "-110", combo.Bottom);
+        await Task.Delay(200);
+        _ext.Send(Out.WiredSetObjectVariableValue, 0, CenterItem.Id, "-110", combo.Center);
+        await Task.Delay(200);
 
         await MoveItem(BottomItem, 5, 5);
         await MoveItem(CenterItem, 5, 5);
