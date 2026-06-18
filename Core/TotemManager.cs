@@ -75,12 +75,23 @@ public class TotemManager(Extension ext)
         IsSantorini = santorini;
     }
 
-    public void Start() => _ = RunSequence();
+    public async Task Start()
+    {
+        cts = new CancellationTokenSource();
+        try
+        {
+            await _ext.gameData.WaitForLoadAsync(cts.Token);
+            await RunSequence();
+        }
+        catch (OperationCanceledException) { }
+    }
+
     public void Stop()
     {
         cts?.Cancel();
         Stopped?.Invoke();
     }
+
     public event Action? Started;
     public event Action? Stopped;
     public event Action? EffectReceived;

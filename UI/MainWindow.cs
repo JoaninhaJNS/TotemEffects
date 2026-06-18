@@ -130,7 +130,7 @@ public class MainWindow : Window
         Grid.SetColumn(title, 1);
 
         btnAction = new FlatButton("Start", Theme.Green, Theme.GreenHov, width: 72);
-        btnAction.Clicked += OnStartStop;
+        btnAction.Clicked += async () => await OnStartStop();
 
         bool pinned = false;
         var btnPin = new FlatButton("📌", Theme.BgHeader, Theme.BgSurface, width: 26, fontSize: 10, fontFamily: new FontFamily("Segoe UI Symbol"))
@@ -386,13 +386,13 @@ public class MainWindow : Window
         return card;
     }
 
-    private void OnStartStop()
+    private async Task OnStartStop()
     {
         if (!_ext.IsConnected) return;
 
         if (_running)
             _ext.totemManager.Stop();
         else
-            _ext.totemManager.Start();
+            await _ext.totemManager.Start();
     }
 }
