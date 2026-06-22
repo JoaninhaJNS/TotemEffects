@@ -40,7 +40,7 @@ public class MainWindow : Window
 
         Title = "Totem Effects";
         Width = 380;
-        Height = 380;
+        Height = 450;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = true;
         Background = Theme.BgDark;
@@ -87,6 +87,8 @@ public class MainWindow : Window
             _btnStartStop.SetLabel("Stop");
             _btnStartStop.SetColors(Theme.Red, Theme.RedHov);
         });
+
+        _ext.totemManager.Unfocus += () => Dispatcher.Invoke(() => WindowState = WindowState.Minimized);
     }
 
     private Border BuildHeader(out FlatButton btnAction)
@@ -172,6 +174,26 @@ public class MainWindow : Window
         body.Children.Add(BuildComboSection("JUNGLE", _jungleCombos, firstSelected: true));
         body.Children.Add(BuildComboSection("SANTORINI", _santoriniCombos, firstSelected: false));
 
+        // checkboxes
+        var checkboxLabel = new TextBlock
+        {
+            Text = "CONFIG",
+            Foreground = Theme.TextMuted,
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        body.Children.Add(checkboxLabel);
+
+        var chkBottom = new FlatCheckBox("Use totem base from someone else", _ext.totemManager.UseBottomFromSomeoneElse);
+        chkBottom.Changed += v => _ext.totemManager.UseBottomFromSomeoneElse = v;
+        body.Children.Add(chkBottom);
+
+        var chkCenter = new FlatCheckBox("Use totem body from someone else", _ext.totemManager.UseCenterFromSomeoneElse);
+        chkCenter.Changed += v => _ext.totemManager.UseCenterFromSomeoneElse = v;
+        body.Children.Add(chkCenter);
+
+        // speed slider
         var sliderLabel = new TextBlock
         {
             Text = "SPEED",
@@ -224,6 +246,7 @@ public class MainWindow : Window
         sliderRow.Children.Add(valueLabel);
         body.Children.Add(sliderRow);
 
+        // effects farmed counter
         var countRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,

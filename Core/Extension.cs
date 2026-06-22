@@ -19,7 +19,7 @@ public class Extension : GEarthExtension
         Name = "Totem Effects",
         Description = "Automatically farm totem effects",
         Author = "JoaninhaJNS",
-        Version = "1.0.1"
+        Version = "1.0.2"
     })
     {
         gameData = new GameDataManager();
@@ -34,12 +34,12 @@ public class Extension : GEarthExtension
     {
         base.OnConnected(e);
         await gameData.LoadAsync(e.Session.Hotel, [GameDataType.FurniData]);
-        totemManager.Initialize();       
+        await totemManager.Initialize();       
     }
 
     protected override void OnDisconnected()
     {
         base.OnDisconnected();
-        totemManager.ResetState();
+        totemManager.ResetAll();
     }
 }
