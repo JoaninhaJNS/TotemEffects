@@ -143,8 +143,8 @@ public class TotemManager(Extension ext)
             "linkTitle", linkEventMsg, "linkUrl", linkEventUrl,
             "message", message, "title", "Totem Effects");
 
-    private void NotifyChat(string message) =>
-        _ext.Send(new AvatarTalkMsg(message, BubbleStyle: 34));
+    private void NotifyChat(string message, int bubble) =>
+        _ext.Send(new AvatarTalkMsg(message, BubbleStyle: bubble));
 
     public void ResetAll()
     {
@@ -260,7 +260,7 @@ public class TotemManager(Extension ext)
         }
 
         Unfocus?.Invoke();
-        NotifyChat($"Click on the [b]{className}[/b] you want to use...");
+        NotifyChat($"Click on the [b]{className}[/b] you want to use...", 202);
         while (true)
         {
             var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
@@ -270,7 +270,7 @@ public class TotemManager(Extension ext)
                 saveId(inRoom.Id);
                 return new(inRoom.Id, true);
             }
-            NotifyChat($"That is not a [b]{className}[/b], try again...");
+            NotifyChat($"That is not a [b]{className}[/b], try again...", 220);
         }
     }
 
@@ -312,10 +312,16 @@ public class TotemManager(Extension ext)
     {
         // reuse last known used head
         if (session.HeadId.HasValue)
-            return new(session.HeadId.Value, true);
+        {
+            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.HeadId.Value);
+            if (inRoom is not null)
+                return new(session.HeadId.Value, true);
+
+            return new(session.HeadId.Value, false);
+        }
 
         Unfocus?.Invoke();
-        NotifyChat($"Click on the [b]{HeadClass?.Name}[/b] you want to use...");
+        NotifyChat($"Click on the [b]{HeadClass?.Name}[/b] you want to use...", 202);
         while (true)
         {
             var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
@@ -324,14 +330,14 @@ public class TotemManager(Extension ext)
             {
                 if (inRoom.OwnerId != UserId)
                 {
-                    NotifyChat("You need to own the totem head to farm effects");
+                    NotifyChat($"You need to own the [b]{HeadClass?.Name}[/b] to farm effects", 220);
                     Stopped?.Invoke();
                     return null;
                 }
                 session.HeadId = inRoom.Id;
                 return new(inRoom.Id, true);
             }
-            NotifyChat($"That is not a [b]{HeadClass?.Name}[/b], try again...");
+            NotifyChat($"That is not a [b]{HeadClass?.Name}[/b], try again...", 220);
         }
     }
 
@@ -397,7 +403,7 @@ public class TotemManager(Extension ext)
 
         // ask user to click a tile for wireds
         Unfocus?.Invoke();
-        NotifyChat("Click where you want to place the wired configuration...");
+        NotifyChat("Click where you want to place the wired configuration...", 202);
         Point tileForWireds;
         while (true)
         {
@@ -461,7 +467,7 @@ public class TotemManager(Extension ext)
 
         // ask user to click a tile for the totem
         Unfocus?.Invoke();
-        NotifyChat("Click where you want to place the totem...");
+        NotifyChat("Click where you want to place the totem...", 202);
         while (true)
         {
             var walk = await _ext.ReceiveAsync<WalkMsg>(timeout: -1, block: true, cancellationToken: token);
@@ -528,7 +534,7 @@ public class TotemManager(Extension ext)
         await Task.Delay(100);
         _ext.Send(Out.MoveObject, centerPiece.Id, tileForTotem, 0);
         await Task.Delay(100);
-        MovePiece(headPiece, tileForTotem);
+        _ext.Send(Out.MoveObject, headPiece.Id, tileForTotem, 0);
 
         await Task.Delay(100);
 
@@ -548,10 +554,10 @@ public class TotemManager(Extension ext)
     // repeatedly picks up, places and use the head totem to farm effects
     private async Task LoopHead(TotemPiece head, Point tile, CancellationToken token)
     {
-        _ext.Send(Out.PickupObject, 2, head.Id, false);
-        await Task.Delay(LoopDelay, token);
         _ext.Send(Out.PlaceObject, head.PlaceString(tile.X, tile.Y));
         _ext.Send(Out.UseFurniture, head.Id, 0);
+        await Task.Delay(LoopDelay, token);
+        _ext.Send(Out.PickupObject, 2, head.Id, false);
         await Task.Delay(LoopDelay, token);
     }
 
@@ -645,6 +651,13 @@ public class TotemManager(Extension ext)
 
         // setup combo states and move totem to final tile
         await SetupCombo(state, combo, headPiece, bottomPiece, centerPiece, placeablePoints, tileForWireds.Value, tileForTotem.Value);
+
+        // check if head piece is in the room before pickup
+        if (roomFloorItems.Any(x => x.Id == headPiece.Id))
+        {
+            _ext.Send(Out.PickupObject, 2, headPiece.Id, false);
+            await Task.Delay(100);
+        }
 
         // farm effects loop
         try
