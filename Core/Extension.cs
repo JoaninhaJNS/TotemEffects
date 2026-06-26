@@ -19,7 +19,7 @@ public class Extension : GEarthExtension
         Name = "Totem Effects",
         Description = "Automatically farm totem effects",
         Author = "JoaninhaJNS",
-        Version = "1.0.2"
+        Version = "1.0.3"
     })
     {
         gameData = new GameDataManager();

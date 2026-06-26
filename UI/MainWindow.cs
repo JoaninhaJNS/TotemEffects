@@ -40,7 +40,7 @@ public class MainWindow : Window
 
         Title = "Totem Effects";
         Width = 380;
-        Height = 450;
+        Height = 425;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = true;
         Background = Theme.BgDark;
@@ -185,13 +185,9 @@ public class MainWindow : Window
         };
         body.Children.Add(checkboxLabel);
 
-        var chkBottom = new FlatCheckBox("Use totem base from someone else", _ext.totemManager.UseBottomFromSomeoneElse);
-        chkBottom.Changed += v => _ext.totemManager.UseBottomFromSomeoneElse = v;
-        body.Children.Add(chkBottom);
-
-        var chkCenter = new FlatCheckBox("Use totem body from someone else", _ext.totemManager.UseCenterFromSomeoneElse);
-        chkCenter.Changed += v => _ext.totemManager.UseCenterFromSomeoneElse = v;
-        body.Children.Add(chkCenter);
+        var chkManual = new FlatCheckBox("Select totem parts already in room", _ext.totemManager.SelectMode);
+        chkManual.Changed += v => _ext.totemManager.SelectMode = v;
+        body.Children.Add(chkManual);
 
         // speed slider
         var sliderLabel = new TextBlock

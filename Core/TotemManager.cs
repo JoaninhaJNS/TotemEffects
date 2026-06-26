@@ -24,8 +24,7 @@ public class TotemManager(Extension ext)
     private TotemSession SantoriniSession { get; } = new();
     private TotemSession CurrentSession => IsSantorini ? SantoriniSession : JungleSession;
     private Id? UserId { get; set; } = null;
-    public bool UseBottomFromSomeoneElse { get; set; } = false;
-    public bool UseCenterFromSomeoneElse { get; set; } = false;
+    public bool SelectMode { get; set; } = false;
     private int SelectedCombo { get; set; } = 1;
     private bool IsSantorini { get; set; } = false;
     private bool HasWiredEditPerm { get; set; } = false;
@@ -62,7 +61,11 @@ public class TotemManager(Extension ext)
         var profile = await _ext.profileManager.GetUserDataAsync();
         UserId = profile.Id;
         var furniData = _ext.gameData.Furni;
-        if (furniData is null) return;
+        if (furniData is null)
+        {
+            Console.WriteLine("Could not load furnidata");
+            return;
+        }
 
         FurniInfo? GetClass(string identifier) =>
             furniData.TryGetInfo(identifier, out var info) ? info : null;
@@ -106,6 +109,10 @@ public class TotemManager(Extension ext)
             await RunSequence();
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
         finally
         {
             Stopped?.Invoke();
@@ -159,7 +166,6 @@ public class TotemManager(Extension ext)
     public event Action? Started;
     public event Action? Stopped;
     public event Action? Unfocus;
-    public event Action? InputReceived;
     public event Action? EffectReceived;
 
     private void OnNotificationDialog(Intercept e)
@@ -238,155 +244,126 @@ public class TotemManager(Extension ext)
         return (page, offer);
     }
 
-    // resolve head piece, from room or own inventory
-    private TotemPiece? ResolveHeadPiece(
-    TotemSession session,
-    IInventory inventory,
-    IEnumerable<IFloorItem> roomFloorItems)
+    // generic helper to resolve a piece from room by clicking
+    private async Task<TotemPiece?> ResolveFromRoomByClick(
+        Id? lastId,
+        Action<Id> saveId,
+        int? classId,
+        string className,
+        IEnumerable<IFloorItem> roomFloorItems,
+        CancellationToken token)
     {
-        var classId = HeadClass?.Kind;
-
-        // try to reuse last known head
-        if (session.HeadId.HasValue)
+        if (lastId.HasValue)
         {
-            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.HeadId.Value);
+            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == lastId.Value && x.Kind == classId);
+            if (inRoom is not null) return new(inRoom.Id, true);
+        }
+
+        Unfocus?.Invoke();
+        NotifyChat($"Click on the [b]{className}[/b] you want to use...");
+        while (true)
+        {
+            var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
+            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == clicked.Id && x.Kind == classId && x.Type == ItemType.Floor);
+            if (inRoom is not null)
+            {
+                saveId(inRoom.Id);
+                return new(inRoom.Id, true);
+            }
+            NotifyChat($"That is not a [b]{className}[/b], try again...");
+        }
+    }
+
+    // generic helper to resolve a piece from inventory or room
+    private TotemPiece? ResolveFromInventory(
+        Id? lastId,
+        Action<Id> saveId,
+        int? classId,
+        string className,
+        IInventory inventory,
+        IEnumerable<IFloorItem> roomFloorItems)
+    {
+        if (lastId.HasValue)
+        {
+            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == lastId.Value);
             if (inRoom is not null) return new(inRoom.Id, true);
 
-            var inInventory = inventory.FirstOrDefault(x => x.Id == session.HeadId.Value);
+            var inInventory = inventory.FirstOrDefault(x => x.Id == lastId.Value);
             if (inInventory is not null) return new(inInventory.Id, false);
         }
 
-        // find by class
-        var headInInventory = inventory.FirstOrDefault(x => x.Kind == classId);
-        if (headInInventory is null)
+        var item = inventory.FirstOrDefault(x => x.Kind == classId && x.Type == ItemType.Floor);
+        if (item is null)
         {
-            SendNotFound(HeadClass?.Name ?? "Totem Head");
+            SendNotFound(className);
             Stopped?.Invoke();
             return null;
         }
 
-        session.HeadId = headInInventory.Id;
-        return new(headInInventory.Id, false);
+        saveId(item.Id);
+        return new(item.Id, false);
     }
 
-    // resolve bottom piece, from someone else room item or own inventory
-    private async Task<TotemPiece?> ResolveBottomPiece(
+    // resolve head piece in select mode, asks to click the head in room
+    private async Task<TotemPiece?> ResolveHeadPieceManual(
         TotemSession session,
-        IInventory inventory,
         IEnumerable<IFloorItem> roomFloorItems,
         CancellationToken token)
     {
-        var classId = BottomClass?.Kind;
+        // reuse last known used head
+        if (session.HeadId.HasValue)
+            return new(session.HeadId.Value, true);
 
-        if (UseBottomFromSomeoneElse)
+        Unfocus?.Invoke();
+        NotifyChat($"Click on the [b]{HeadClass?.Name}[/b] you want to use...");
+        while (true)
         {
-            // try to reuse last known bottom from room
-            if (session.BottomId.HasValue)
+            var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
+            var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == clicked.Id && x.Kind == HeadClass?.Kind && x.Type == ItemType.Floor);
+            if (inRoom is not null)
             {
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.BottomId.Value && x.Kind == classId);
-                if (inRoom is not null) return new(inRoom.Id, true);
-            }
-
-            // ask user to click the bottom
-            Unfocus?.Invoke();
-            NotifyChat($"Click on the [b]{BottomClass?.Name}[/b] you want to use...");
-            while (true)
-            {
-                var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == clicked.Id && x.Kind == classId);
-                if (inRoom is not null)
+                if (inRoom.OwnerId != UserId)
                 {
-                    session.BottomId = inRoom.Id;
-                    return new(inRoom.Id, true);
+                    NotifyChat("You need to own the totem head to farm effects");
+                    Stopped?.Invoke();
+                    return null;
                 }
-                NotifyChat($"That is not a [b]{BottomClass?.Name}[/b], try again...");
-                InputReceived?.Invoke();
+                session.HeadId = inRoom.Id;
+                return new(inRoom.Id, true);
             }
-        }
-        else
-        {
-            // try to reuse last known bottom from room or inventory
-            if (session.BottomId.HasValue)
-            {
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.BottomId.Value);
-                if (inRoom is not null) return new(inRoom.Id, true);
-
-                var inInventory = inventory.FirstOrDefault(x => x.Id == session.BottomId.Value);
-                if (inInventory is not null) return new(inInventory.Id, false);
-            }
-
-            // find by class in inventory
-            var bottomInInventory = inventory.FirstOrDefault(x => x.Kind == classId);
-            if (bottomInInventory is null)
-            {
-                SendNotFound(BottomClass?.Name ?? "Totem Bottom");
-                Stopped?.Invoke();
-                return null;
-            }
-
-            session.BottomId = bottomInInventory.Id;
-            return new(bottomInInventory.Id, false);
+            NotifyChat($"That is not a [b]{HeadClass?.Name}[/b], try again...");
         }
     }
 
-    // resolve center piece, from someone else room item or own inventory
-    private async Task<TotemPiece?> ResolveCenterPiece(
+    private TotemPiece? ResolveHeadPieceAuto(
         TotemSession session,
         IInventory inventory,
+        IEnumerable<IFloorItem> roomFloorItems) =>
+        ResolveFromInventory(session.HeadId, id => session.HeadId = id, HeadClass?.Kind, HeadClass?.Name ?? "Totem Head", inventory, roomFloorItems);
+
+    private Task<TotemPiece?> ResolveBottomPieceManual(
+        TotemSession session,
         IEnumerable<IFloorItem> roomFloorItems,
-        CancellationToken token)
-    {
-        var classId = CenterClass?.Kind;
+        CancellationToken token) =>
+        ResolveFromRoomByClick(session.BottomId, id => session.BottomId = id, BottomClass?.Kind, BottomClass?.Name ?? "Totem Bottom", roomFloorItems, token);
 
-        if (UseCenterFromSomeoneElse)
-        {
-            // try to reuse last known center from room
-            if (session.CenterId.HasValue)
-            {
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.CenterId.Value && x.Kind == classId);
-                if (inRoom is not null) return new(inRoom.Id, true);
-            }
+    private TotemPiece? ResolveBottomPieceAuto(
+        TotemSession session,
+        IInventory inventory,
+        IEnumerable<IFloorItem> roomFloorItems) =>
+        ResolveFromInventory(session.BottomId, id => session.BottomId = id, BottomClass?.Kind, BottomClass?.Name ?? "Totem Bottom", inventory, roomFloorItems);
 
-            // ask user to click the center piece
-            Unfocus?.Invoke();
-            NotifyChat($"Click on the [b]{CenterClass?.Name}[/b] you want to use...");
-            while (true)
-            {
-                var clicked = await _ext.ReceiveAsync<ClickFurniMsg>(timeout: -1, block: true, cancellationToken: token);
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == clicked.Id && x.Kind == classId);
-                if (inRoom is not null)
-                {
-                    session.CenterId = inRoom.Id;
-                    return new(inRoom.Id, true);
-                }
-                NotifyChat($"That is not a [b]{CenterClass?.Name}[/b], try again...");
-            }
-        }
-        else
-        {
-            // try to reuse last known center from room or inventory
-            if (session.CenterId.HasValue)
-            {
-                var inRoom = roomFloorItems.FirstOrDefault(x => x.Id == session.CenterId.Value);
-                if (inRoom is not null) return new(inRoom.Id, true);
+    private Task<TotemPiece?> ResolveCenterPieceManual(
+        TotemSession session,
+        IEnumerable<IFloorItem> roomFloorItems,
+        CancellationToken token) =>
+        ResolveFromRoomByClick(session.CenterId, id => session.CenterId = id, CenterClass?.Kind, CenterClass?.Name ?? "Totem Center", roomFloorItems, token);
 
-                var inInventory = inventory.FirstOrDefault(x => x.Id == session.CenterId.Value);
-                if (inInventory is not null) return new(inInventory.Id, false);
-            }
-
-            // find by class in inventory
-            var centerInInventory = inventory.FirstOrDefault(x => x.Kind == classId);
-            if (centerInInventory is null)
-            {
-                SendNotFound(CenterClass?.Name ?? "Totem Center");
-                Stopped?.Invoke();
-                return null;
-            }
-
-            session.CenterId = centerInInventory.Id;
-            return new(centerInInventory.Id, false);
-        }
-    }
+    private TotemPiece? ResolveCenterPieceAuto(
+        TotemSession session,
+        IInventory inventory,
+        IEnumerable<IFloorItem> roomFloorItems) =>
+        ResolveFromInventory(session.CenterId, id => session.CenterId = id, CenterClass?.Kind, CenterClass?.Name ?? "Totem Center", inventory, roomFloorItems);
 
     // ensures the wired configuration is in the room.
     // if already placed from last used, reuses them. Otherwise gets from BC and places them.
@@ -619,16 +596,31 @@ public class TotemManager(Extension ext)
             return;
         }
 
-        var inventory = await _ext.inventoryManager.LoadInventoryAsync();
+        IInventory? inventory = null;
+        if (!SelectMode)
+        {
+            inventory = await _ext.inventoryManager.LoadInventoryAsync(cancellationToken: token);
+            if (inventory is null)
+            {
+                Console.WriteLine("Could not fetch inventory");
+                Stopped?.Invoke();
+                return;
+            }
+        }
 
-        // resolve pieces
-        var headPiece = ResolveHeadPiece(state, inventory, roomFloorItems);
+        var headPiece = SelectMode
+            ? await ResolveHeadPieceManual(state, roomFloorItems, token)
+            : ResolveHeadPieceAuto(state, inventory!, roomFloorItems);
         if (headPiece is null) return;
 
-        var bottomPiece = await ResolveBottomPiece(state, inventory, roomFloorItems, token);
+        var bottomPiece = SelectMode
+            ? await ResolveBottomPieceManual(state, roomFloorItems, token)
+            : ResolveBottomPieceAuto(state, inventory!, roomFloorItems);
         if (bottomPiece is null) return;
 
-        var centerPiece = await ResolveCenterPiece(state, inventory, roomFloorItems, token);
+        var centerPiece = SelectMode
+            ? await ResolveCenterPieceManual(state, roomFloorItems, token)
+            : ResolveCenterPieceAuto(state, inventory!, roomFloorItems);
         if (centerPiece is null) return;
 
         // gets possible placeable points in the current room
@@ -636,11 +628,20 @@ public class TotemManager(Extension ext)
 
         // ensure wireds are placed
         var tileForWireds = await EnsureWiredsInRoom(state, roomFloorItems, placeablePoints, token);
-        if (tileForWireds is null) return;
-
+        if (tileForWireds is null)
+        {
+            Console.WriteLine("tileForWired returned null");
+            Stopped?.Invoke();
+            return;
+        }
         // ensure totem tile is selected
         var tileForTotem = await EnsureTileForTotem(state, roomFloorItems, placeablePoints, tileForWireds.Value, bottomPiece, centerPiece, token);
-        if (tileForTotem is null) return;
+        if (tileForTotem is null)
+        {
+            Console.WriteLine("tileForTotem returned null");
+            Stopped?.Invoke();
+            return;
+        }
 
         // setup combo states and move totem to final tile
         await SetupCombo(state, combo, headPiece, bottomPiece, centerPiece, placeablePoints, tileForWireds.Value, tileForTotem.Value);
