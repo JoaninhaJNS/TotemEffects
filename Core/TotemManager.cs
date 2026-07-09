@@ -4,7 +4,6 @@ using Xabbo.Core.Game;
 using Xabbo.Core.GameData;
 using Xabbo.Core.Messages.Incoming;
 using Xabbo.Core.Messages.Outgoing;
-using Xabbo.Core.Tasks;
 using Xabbo.Messages.Flash;
 
 namespace TotemEffects.Core;
@@ -228,22 +227,6 @@ public class TotemManager(Extension ext)
         catch { return null; }
     }
 
-    // gets wireds from BC catalog
-    private async Task<(ICatalogPage Page, ICatalogOffer Offer)?> FindCatalogOffer(
-        ICatalog catalog,
-        string pageName,
-        string furniLine,
-        CancellationToken token = default)
-    {
-        var node = catalog.FindNode(name: pageName);
-        if (node == null) return null;
-        var page = await new GetCatalogPageTask(_ext, node.Id, "BUILDERS_CLUB").ExecuteAsync(cancellationToken: token);
-        if (page == null) return null;
-        var offer = page.Offers.FirstOrDefault(x => x.FurniLine == furniLine);
-        if (offer == null) return null;
-        return (page, offer);
-    }
-
     // generic helper to resolve a piece from room by clicking
     private async Task<TotemPiece?> ResolveFromRoomByClick(
         Id? lastId,
@@ -390,17 +373,6 @@ public class TotemManager(Extension ext)
                 return repeatInRoom.XY;
         }
 
-        // gets wireds from BC catalog
-        var catalog = await new GetCatalogTask(_ext, "BUILDERS_CLUB").ExecuteAsync(cancellationToken: token);
-        var repeatResult = await FindCatalogOffer(catalog, "wired_triggers", "wf_trg_period_short", token);
-        var variableResult = await FindCatalogOffer(catalog, "wired_variables_wired", "wf_act_change_var_val", token);
-        if (repeatResult == null || variableResult == null)
-        {
-            Console.WriteLine("Could not get catalog offer of a wired");
-            Stopped?.Invoke();
-            return null;
-        }
-
         // ask user to click a tile for wireds
         Unfocus?.Invoke();
         NotifyChat("Click where you want to place the wired configuration...", 202);
@@ -416,8 +388,15 @@ public class TotemManager(Extension ext)
             break;
         }
 
+        if (WiredRepeatClass is null || WiredVariableClass is null)
+        {
+            Console.WriteLine("Wired classes were not loaded");
+            Stopped?.Invoke();
+            return null;
+        }
+
         // place wired short repeat
-        _ext.Send(Out.BuildersClubPlaceRoomItem, repeatResult.Value.Page.Id, repeatResult.Value.Offer.Id, "", tileForWireds, 0, true);
+        _ext.Send(Out.BuildersClubPlaceRoomItem, -1, WiredRepeatClass.OfferId, "", tileForWireds, 0, true);
         session.WiredRepeatItem = await ReceiveObjectAdded(WiredRepeatClass?.Kind);
         if (session.WiredRepeatItem is null)
         {
@@ -429,7 +408,7 @@ public class TotemManager(Extension ext)
         await Task.Delay(100, token);
 
         // place wired change variable
-        _ext.Send(Out.BuildersClubPlaceRoomItem, variableResult.Value.Page.Id, variableResult.Value.Offer.Id, "", tileForWireds, 0, true);
+        _ext.Send(Out.BuildersClubPlaceRoomItem, -1, WiredVariableClass.OfferId, "", tileForWireds, 0, true);
         session.WiredVariableItem = await ReceiveObjectAdded(WiredVariableClass?.Kind);
         if (session.WiredVariableItem is null)
         {
