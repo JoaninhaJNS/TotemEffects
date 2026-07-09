@@ -533,10 +533,10 @@ public class TotemManager(Extension ext)
     // repeatedly picks up, places and use the head totem to farm effects
     private async Task LoopHead(TotemPiece head, Point tile, CancellationToken token)
     {
+        _ext.Send(Out.PickupObject, 2, head.Id, false);
+        await Task.Delay(LoopDelay, token);
         _ext.Send(Out.PlaceObject, head.PlaceString(tile.X, tile.Y));
         _ext.Send(Out.UseFurniture, head.Id, 0);
-        await Task.Delay(LoopDelay, token);
-        _ext.Send(Out.PickupObject, 2, head.Id, false);
         await Task.Delay(LoopDelay, token);
     }
 
@@ -630,13 +630,6 @@ public class TotemManager(Extension ext)
 
         // setup combo states and move totem to final tile
         await SetupCombo(state, combo, headPiece, bottomPiece, centerPiece, placeablePoints, tileForWireds.Value, tileForTotem.Value);
-
-        // check if head piece is in the room before pickup
-        if (roomFloorItems.Any(x => x.Id == headPiece.Id))
-        {
-            _ext.Send(Out.PickupObject, 2, headPiece.Id, false);
-            await Task.Delay(100);
-        }
 
         // farm effects loop
         try
