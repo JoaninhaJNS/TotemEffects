@@ -204,7 +204,7 @@ public class MainWindow : Window
         sliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         sliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var delayValues = new[] { 300, 250, 200, 150, 100, 50 };
+        var delayValues = new[] { 420, 350, 280, 210, 140, 70 };
         var speedLabels = new[] { "1x", "2x", "3x", "4x", "5x", "Max" };
 
         var valueLabel = new TextBlock

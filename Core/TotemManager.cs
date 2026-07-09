@@ -28,7 +28,7 @@ public class TotemManager(Extension ext)
     private bool IsSantorini { get; set; } = false;
     private bool HasWiredEditPerm { get; set; } = false;
     private CancellationTokenSource? Cts { get; set; } = null;
-    public int LoopDelay { get; set; } = 50;
+    public int LoopDelay { get; set; } = 70;
 
     // test cubie
     /*private readonly Dictionary<int, (int Head, int Center, int Bottom)> JungleCombos = new()
