@@ -1,3 +1,6 @@
+> [!WARNING]
+> This extension is outdated, use [**this**](https://qxscripter.xyz/s/qbaqzu6kjhoz) instead.
+
 ## Totem Effects
 
 Assistant to automatically farm totem effects
